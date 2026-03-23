@@ -16,7 +16,6 @@
 #notrayicon
 A_MaxHotkeysPerInterval := 200
 
-
 global Manual_colemak_remaps_enable := true
 global Sticky_rshift_enable := false
 global Arrowkeys_mouse_remap_enable := false
@@ -54,14 +53,11 @@ class Workspace
 	; wallpaper.
 	wallpaper := a_appdata . "\Microsoft\Windows\Themes\TranscodedWallpaper"
 
-
 	;
 	; The instance creation function.
-	; Empty for now.
 	;
 	call()
 	{}
-
 
 	activate()
 	{
@@ -85,7 +81,6 @@ class Workspace
 		this.is_active := true
 	}
 
-
 	deactivate()
 	{
 		; Minimize all windows on this workspace.
@@ -98,11 +93,10 @@ class Workspace
 		this.is_active := false
 	}
 
-
 	;
 	; Re-positions all windows in this workspace based on the current amount
 	; of un-minimized windows in this workspace.
-	; May not be called if this workspace isn't active.
+	; Shall not be called if this workspace isn't active.
 	;
 	reposition_windows()
 	{
@@ -117,20 +111,22 @@ class Workspace
 		loop (this.unminimized_hwnds.length) {
 			start_x := (a_index - 1) * win_width_x
 
-			win := {hwnd: this.unminimized_hwnds[a_index]}
+			hwnd := this.unminimized_hwnds[a_index]
 			try {
 				winmove(start_x, 0, win_width_x,
-					A_screenheight, win)
+					A_screenheight, {hwnd: hwnd})
+
+			; If we're not allowed to move the window,
+			; make it "floating".
 			} catch {
-				this.unregister_window_unminimized(
-					this.unminimized_hwnds[a_index])
-				return
+				this.hwnds.removeat(
+					array_index_of(this.hwnds, hwnd))
+				this.unminimized_hwnds.removeat(a_index)
 			}
 		}
 
 		n_unminimized_hwnds_recognized := this.unminimized_hwnds.length
 	}
-
 
 	;
 	; Registers an un-minimized window (@hwnd) and, if this workspace is
@@ -144,7 +140,6 @@ class Workspace
 		if (this.is_active)
 			this.reposition_windows()
 	}
-
 
 	;
 	; Un-registers an un-minimized window (@hwnd) and, if this workspace is
@@ -165,7 +160,6 @@ class Workspace
 			this.reposition_windows()
 		}
 	}
-
 
 	;
 	; Un-minimizes this workspace's last minimized window.
@@ -188,7 +182,6 @@ class Workspace
 		this.reposition_windows()
 	}
 }
-
 
 ; 8 backspaces for when you wanna backspace fast without deleting entire words.
 #hotif (Fast_backspace_enable)
@@ -291,7 +284,6 @@ class Workspace
 
 #+F5::global Window_management_enable := !Window_management_enable
 
-
 ;
 ; Should be run immediately when this script is started, to initialize stuff.
 ;
@@ -342,7 +334,6 @@ init()
 	onmessage(shell_hook_msg_id, shell_event_callback)
 }
 
-
 ;
 ; Returns the index of @item in @arr, or 0 if it's not present.
 ;
@@ -356,7 +347,6 @@ array_index_of(arr, item)
 	return 0
 }
 
-
 ;
 ; Callback for shell events.
 ;
@@ -369,16 +359,21 @@ shell_event_callback(w_param, l_param, *)
 	switch (w_param) {
 	; HSHELL_WINDOWCREATED
 	case 1:
-	if (!should_ignore_window(l_param))
+	if (!should_ignore_window(l_param)) {
+		try { ; There might be an "access is denied" error.
+
+			; Hide titlebar / titlebar buttons.
+			winsetstyle("-0xC00000", {hwnd: l_param})
+		}
 		Workspaces[Active_workspace_index]
 			.register_window_unminimized(l_param)
+	}
 
 	; HSHELL_WINDOWDESTROYED
 	case 2:
 	unregister_window_global(l_param)	
 	}
 }
-
 
 ;
 ; Returns true if wnd_obj should be ignored (that is, not be passed to
@@ -408,13 +403,15 @@ should_ignore_window(wnd_obj)
 	       ((proc_path) = "C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\SearchHost.exe"
 		&& wnd_class = "Windows.UI.Core.CoreWindow") ||
 
+	       ((proc_path) = "C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe"
+		&& wnd_class = "Windows.UI.Core.CoreWindow") ||
+
 	       ((proc_path) = "C:\Windows\ImmersiveControlPanel\SystemSettings.exe"
 		&& wnd_class = "Windows.UI.Core.CoreWindow") ||
 
 	       (substr(proc_path, 1, 56) = "C:\Program Files\WindowsApps\Microsoft.XboxGamingOverlay"
 		&& wnd_class = "Windows.UI.Core.CoreWindow")
 }
-
 
 ;
 ; @index_new - The index of the workspace to switch to, starting from 1.
@@ -428,7 +425,6 @@ switch_workspace(index_new)
 
 	Active_workspace_index := index_new
 }
-
 
 ;
 ; Unregisters the window @hwnd from all workspaces.
@@ -462,7 +458,6 @@ unregister_window_global(hwnd)
         }
 }
 
-
 minimize_focused_window()
 {
 	hwnd_minimize := get_active_window_movable_minimizable()
@@ -482,7 +477,6 @@ minimize_focused_window()
 					.unminimized_hwnds, hwnd_minimize))
 	Workspaces[Active_workspace_index].reposition_windows()
 }
-
 
 ;
 ; Returns the active window if it's movable and minimizable (in the active
@@ -506,7 +500,6 @@ get_active_window_movable_minimizable()
 	return hwnd
 }
 
-
 ;
 ; Tries to move the currently focused window, if present, to workspace index @n.
 ;
@@ -522,7 +515,6 @@ move_focused_window_to_workspace(n)
 		hwnd_move)
 	Workspaces[n].register_window_unminimized(hwnd_move)
 }
-
 
 ;
 ; Tries to rebuild HEKWM itself and, if the build is successful, run the new
@@ -545,7 +537,6 @@ rebuild_self()
 	exitapp()
 }
 
-
 #F1::unregister_at_active_workspace(1)
 #F2::unregister_at_active_workspace(2)
 #F3::unregister_at_active_workspace(3)
@@ -563,7 +554,6 @@ rebuild_self()
 #<^>!F6::identify_at_active_workspace(6)
 #<^>!F7::identify_at_active_workspace(7)
 
-
 ;
 ; Debug function for identifying windows (eg to exclude them from this wm).
 ;
@@ -574,7 +564,6 @@ identify_at_active_workspace(window_index)
 
 	msgbox(wingetprocesspath(win) . "`n" . wingetclass(win))
 }
-
 
 ;
 ; For when I don't want invisible windows in my face.
@@ -591,7 +580,6 @@ unregister_at_active_workspace(window_index)
 	}
 }
 
-
 #hotif (Manual_colemak_remaps_enable)
 	CapsLock::Esc
 	=::CapsLock
@@ -599,18 +587,15 @@ unregister_at_active_workspace(window_index)
 	+0::) ; Fix some weird bug (no idea why it's a thing)
 #hotif
 
-
 #hotif (Sticky_rshift_enable)
 	RShift::global Sticky_rshift_active := !Sticky_rshift_active
 #hotif
-
 
 sticky_rshift_on_key(key)
 {
 	sendevent(key)
 	global Sticky_rshift_active := false
 }
-
 
 ; Shitty code warning
 #hotif (Sticky_rshift_enable && Sticky_rshift_active)
@@ -671,7 +656,6 @@ sticky_rshift_on_key(key)
 	+Up::MouseMove(0, -120, 0, "R")
 	+Down::MouseMove(0, 120, 0, "R")
 #hotif
-
 
 ; Entry-point.
 init()
